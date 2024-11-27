@@ -26,14 +26,17 @@ class Author(models.Model):
 class Book(models.Model):
     """Модель для книги."""
 
-    title = models.CharField('Заголовок', max_length=FIELD_MAX_LENGTH)
+    title = models.CharField(
+        'Заголовок', max_length=FIELD_MAX_LENGTH, db_index=True
+    )
     author = models.ForeignKey(
         Author,
         verbose_name='Автор',
         on_delete=models.CASCADE,
         related_name='books',
+        db_index=True,
     )
-    count = models.IntegerField(
+    count = models.PositiveIntegerField(
         'Остаток на складе',
         default=DEFAULT_VALUE_AMOUNT,
         validators=[
@@ -48,12 +51,15 @@ class Book(models.Model):
         ordering = ('id',)
         verbose_name = 'Книга'
         verbose_name_plural = 'Книги'
+        indexes = (
+            models.Index(fields=['title']),
+            models.Index(fields=['author']),
+        )
+        constraints = (
+            models.UniqueConstraint(
+                fields=('title', 'author'), name='unique_for_author_book'
+            ),
+        )
 
     def __str__(self):
         return f'Автор: {self.author} Заголовок: {self.title[:STR_MAX_LENGTH]}'
-
-    def clean_count(self):
-        if self.count < MIN_VALUE_AMOUNT:
-            raise ValidationError(
-                f'Остаток на складе не может быть меньше {MIN_VALUE_AMOUNT}'
-            )

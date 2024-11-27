@@ -9,30 +9,29 @@ class BookTitleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Book
         fields = ('title',)
-        extra_kwargs = {
-            'title': {'help_text': 'Название книги'},
-        }
+
+
+class AuthorNameSerializer(serializers.ModelSerializer):
+    """Сериализатор для отображения имени автора."""
+
+    class Meta:
+        model = Author
+        fields = ('first_name', 'last_name')
 
 
 class AuthorSerializer(serializers.ModelSerializer):
     """Сериализатор для автора."""
 
-    books = BookTitleSerializer(many=True, required=False)
+    books = BookTitleSerializer(many=True)
 
     class Meta:
         model = Author
         fields = ('id', 'first_name', 'last_name', 'books')
-        extra_kwargs = {
-            'first_name': {'help_text': 'Имя автора'},
-            'last_name': {'help_text': 'Фамилия автора'},
-            'books': {'help_text': 'Список книг автора'},
-        }
 
     def create(self, validated_data):
         """Создание автора с книгами."""
 
         books_data = validated_data.pop('books', [])
-
         author = Author.objects.create(**validated_data)
 
         if books_data:
@@ -42,7 +41,7 @@ class AuthorSerializer(serializers.ModelSerializer):
         return author
 
     def update(self, instance, validated_data):
-        """Обновление автора с книгами."""
+        """Обновление автора и его книг."""
 
         books_data = validated_data.pop('books', None)
 
@@ -64,18 +63,6 @@ class AuthorSerializer(serializers.ModelSerializer):
         return instance
 
 
-class AuthorNameSerializer(serializers.ModelSerializer):
-    """Сериализатор для отображения имени автора."""
-
-    class Meta:
-        model = Author
-        fields = ('first_name', 'last_name')
-        extra_kwargs = {
-            'first_name': {'help_text': 'Имя автора'},
-            'last_name': {'help_text': 'Фамилия автора'},
-        }
-
-
 class BookSerializer(serializers.ModelSerializer):
     """Сериализатор для книги."""
 
@@ -84,39 +71,64 @@ class BookSerializer(serializers.ModelSerializer):
     class Meta:
         model = Book
         fields = ('id', 'title', 'author', 'count')
-        extra_kwargs = {
-            'first_name': {'help_text': 'Имя автора'},
-            'last_name': {'help_text': 'Фамилия автора'},
-            'books': {'help_text': 'Список книг, написанных автором'},
-        }
 
     def create(self, validated_data):
-        """Создание книги с автором, если он есть в базе."""
+        """Создание книги с автором."""
 
         author_data = validated_data.pop('author')
 
-        author, created = Author.objects.update_or_create(
+        author, created = Author.objects.get_or_create(
             first_name=author_data['first_name'],
             last_name=author_data['last_name'],
         )
 
-        book = Book.objects.create(author=author, **validated_data)
+        if Book.objects.filter(
+            title=validated_data['title'], author=author
+        ).exists():
+            raise serializers.ValidationError(
+                'Книга с таким названием уже существует у этого автора.'
+            )
 
-        return book
+        return Book.objects.create(author=author, **validated_data)
 
     def update(self, instance, validated_data):
         """Обновление книги с автором."""
 
-        author_data = validated_data.pop('author')
-
-        author, created = Author.objects.update_or_create(
-            first_name=author_data['first_name'],
-            last_name=author_data['last_name'],
-        )
+        author_data = validated_data.pop('author', None)
+        if author_data:
+            author, created = Author.objects.get_or_create(
+                first_name=author_data['first_name'],
+                last_name=author_data['last_name'],
+            )
+            instance.author = author
 
         instance.title = validated_data.get('title', instance.title)
-        instance.author = author
         instance.count = validated_data.get('count', instance.count)
-        instance.save()
 
+        if (
+            Book.objects.filter(title=instance.title, author=instance.author)
+            .exclude(id=instance.id)
+            .exists()
+        ):
+            raise serializers.ValidationError(
+                'Книга с таким названием уже существует у этого автора.'
+            )
+
+        instance.save()
         return instance
+
+    def validate(self, attrs):
+        """Проверка уникальности книги у конкретного автора."""
+
+        author_data = attrs.get('author')
+
+        if Book.objects.filter(
+            title=attrs.get('title'),
+            author__first_name=author_data['first_name'],
+            author__last_name=author_data['last_name'],
+        ).exists():
+            raise serializers.ValidationError(
+                'Книга с таким названием уже существует у этого автора.'
+            )
+
+        return attrs

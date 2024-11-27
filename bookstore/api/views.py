@@ -13,7 +13,7 @@ from .serializers import AuthorSerializer, BookSerializer
 class BookViewSet(viewsets.ModelViewSet):
     """Вьюсет для книги."""
 
-    queryset = Book.objects.all().select_related('author')
+    queryset = Book.objects.select_related('author')
     serializer_class = BookSerializer
     filter_backends = (DjangoFilterBackend,)
     filterset_fields = ('author',)
@@ -27,7 +27,7 @@ class BookViewSet(viewsets.ModelViewSet):
 
             if book.count > 0:
                 book.count = F('count') - 1
-                book.save()
+                book.save(update_fields=['count'])
                 book.refresh_from_db()
 
                 return Response(
@@ -44,5 +44,5 @@ class BookViewSet(viewsets.ModelViewSet):
 class AuthorViewSet(viewsets.ModelViewSet):
     """Вьюсет для автора."""
 
-    queryset = Author.objects.all()
+    queryset = Author.objects.prefetch_related('books')
     serializer_class = AuthorSerializer
